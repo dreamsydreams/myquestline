@@ -13,9 +13,20 @@ interface CampProps {
   /** Book IX Ch.3's second Empty Camp button. Routes to the Archive (Ch.2),
    * which is intentionally not built yet — see PHASE_ROADMAP.md. */
   onOpenArchive: () => void;
+  /** Boss Battle redesign: advances past a chapter that's already fully
+   * complete (player chose "Go Home" instead of "Continue" earlier). Only
+   * ever rendered/callable when state.nextChapter is present. */
+  onAdvanceChapter: () => void;
 }
 
-export function Camp({ state, onToggleMission, onBeginAdventure, onDefeatBoss, onOpenArchive }: CampProps) {
+export function Camp({
+  state,
+  onToggleMission,
+  onBeginAdventure,
+  onDefeatBoss,
+  onOpenArchive,
+  onAdvanceChapter,
+}: CampProps) {
   if (state.status === 'new-player') {
     return <NewPlayerCamp onBeginAdventure={onBeginAdventure} />;
   }
@@ -33,8 +44,10 @@ export function Camp({ state, onToggleMission, onBeginAdventure, onDefeatBoss, o
   return (
     <ActiveCamp
       chapter={state.chapter}
+      nextChapter={state.nextChapter}
       onToggleMission={onToggleMission}
       onDefeatBoss={onDefeatBoss}
+      onAdvanceChapter={onAdvanceChapter}
     />
   );
 }
@@ -138,13 +151,44 @@ function NewPlayerCamp({ onBeginAdventure }: { onBeginAdventure: () => void }) {
 
 function ActiveCamp({
   chapter,
+  nextChapter,
   onToggleMission,
   onDefeatBoss,
+  onAdvanceChapter,
 }: {
   chapter: Extract<PlayerCampState, { status: 'active-journey' }>['chapter'];
+  nextChapter?: Extract<PlayerCampState, { status: 'active-journey' }>['nextChapter'];
   onToggleMission: (missionId: string) => void;
   onDefeatBoss: () => void;
+  onAdvanceChapter: () => void;
 }) {
+  // Boss Battle redesign: a chapter can now sit here fully complete but not
+  // yet advanced past, if the player picked "Go Home" from the ceremony
+  // instead of "Continue." Show that plainly — a finished-chapter card with
+  // its own "Begin Chapter N" prompt — rather than rendering a Boss/Steps
+  // UI for a chapter there's nothing left to do in.
+  if (chapter.isComplete) {
+    return (
+      <div className="mx-auto flex min-h-full max-w-xl flex-col items-center justify-center gap-4 px-6 py-16 text-center">
+        <p className="font-display text-sm uppercase tracking-[0.2em] text-camp-ember">
+          Chapter {chapter.chapterNumber} Complete
+        </p>
+        <h1 className="font-display text-2xl text-camp-parchment">{chapter.name}</h1>
+        <p className="max-w-md text-camp-parchment-dim">
+          You cleared this Chapter's Challenge. Begin the next one whenever you're actually ready — no rush.
+        </p>
+        {nextChapter && (
+          <button
+            onClick={onAdvanceChapter}
+            className="mt-2 rounded-full bg-camp-ember px-8 py-3 font-semibold text-camp-night transition-transform duration-150 hover:bg-camp-ember-bright active:scale-95"
+          >
+            Begin Chapter {nextChapter.chapterNumber}: {nextChapter.name}
+          </button>
+        )}
+      </div>
+    );
+  }
+
   // BUG FIX: "Today" used to be recomputed live, every render, as "the
   // first Quest that isn't fully complete yet." That meant the instant a
   // player checked off the LAST remaining Mission in that Quest, the whole
@@ -168,8 +212,6 @@ function ActiveCamp({
   const nextIncompleteQuest = chapter.quests.find(
     (q) => q.id !== pinnedQuestId && !q.missions.every((m) => m.isComplete)
   );
-
-  const allMissionsComplete = chapter.quests.every((q) => q.missions.every((m) => m.isComplete));
 
   // Boss Battle redesign: "quick" bosses are genuinely finished the moment
   // today's steps are — for those, Defeat can reasonably wait on the
@@ -266,31 +308,35 @@ function ActiveCamp({
                     Face It
                   </button>
                 )}
-                {/* Boss Battle redesign: "Defeat" is the one place an honest
-                    self-report happens. For "sustained" bosses (the
-                    default) it's always clickable — the real-world outcome
-                    isn't inferred from checkboxes, ever. For "quick" bosses,
-                    today's steps essentially ARE the win, so it stays
-                    gated on them being done, same as the old behavior. */}
-                <button
-                  onClick={onDefeatBoss}
-                  disabled={pacing === 'quick' && !allMissionsComplete}
-                  title={
-                    pacing === 'quick' && !allMissionsComplete
-                      ? "Finish today's steps first"
-                      : undefined
-                  }
-                  className="rounded-full bg-camp-ember px-5 py-2 text-sm font-semibold text-camp-night transition-all duration-150 hover:bg-camp-ember-bright active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-camp-ember"
-                >
-                  Defeat
-                </button>
-                <p className="w-full text-xs text-camp-parchment-dim">
-                  {pacing === 'quick'
-                    ? allMissionsComplete
-                      ? "Today's steps are done — if the real thing above has actually happened, mark it here."
-                      : "Finish today's steps to unlock this — for this Challenge, doing the reps essentially is the win."
-                    : "This isn't tied to today's steps below. Click it only once the real thing above has actually happened — whether that's today or weeks from now."}
-                </p>
+                {/* Boss Battle redesign, latest revision: "quick" bosses no
+                    longer have a manual Defeat button at all — App.tsx's
+                    withRecomputedQuickBossDefeat derives isDefeated live
+                    from today's Missions every time one is toggled, so it
+                    flips to Defeated the instant the last box is checked,
+                    and honestly un-defeats itself if one gets unchecked
+                    again. "sustained" bosses (the default) keep the manual
+                    self-report — nothing about the real-world outcome can
+                    be inferred from a checklist for those. */}
+                {pacing === 'sustained' ? (
+                  <>
+                    <button
+                      onClick={onDefeatBoss}
+                      className="rounded-full bg-camp-ember px-5 py-2 text-sm font-semibold text-camp-night transition-all duration-150 hover:bg-camp-ember-bright active:scale-95"
+                    >
+                      Defeat
+                    </button>
+                    <p className="w-full text-xs text-camp-parchment-dim">
+                      This isn't tied to today's steps below. Click it only once the real thing above has
+                      actually happened — whether that's today or weeks from now.
+                    </p>
+                  </>
+                ) : (
+                  stepsVisible && (
+                    <p className="w-full text-xs text-camp-parchment-dim">
+                      Finish today's steps below — for this Challenge, that's the win. No extra click needed.
+                    </p>
+                  )
+                )}
               </div>
             )}
           </div>
