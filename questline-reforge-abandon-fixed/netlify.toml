@@ -1,0 +1,16 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+  functions = "netlify/functions"
+
+[build.environment]
+  # Vite 8 / @vitejs/plugin-react 6 require Node ^20.19.0 || >=22.12.0.
+  # Without this, Netlify's default runtime (often an older LTS) can fail
+  # the build with a confusing engine-mismatch error. Pinned to match the
+  # version this project was built and tested against.
+  NODE_VERSION = "22.12.0"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
