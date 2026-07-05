@@ -324,16 +324,27 @@ function nextId(prefix: string): string {
   return `${prefix}-${idCounter}`;
 }
 
-function makeMission(title: string, attribute: AttributeKey, xp: number, whyItMatters?: string): Mission {
-  return { id: nextId('mission'), title, isComplete: false, attribute, xp, whyItMatters };
+function makeMission(
+  title: string,
+  attribute: AttributeKey,
+  xp: number,
+  whyItMatters?: string,
+  howTo?: string
+): Mission {
+  return { id: nextId('mission'), title, isComplete: false, attribute, xp, whyItMatters, howTo };
 }
 
 function makeQuest(title: string, missions: Mission[]): Quest {
   return { id: nextId('quest'), title, missions, isComplete: false };
 }
 
-function makeBoss(name: string, description: string, whyItMatters?: string): BossBattle {
-  return { id: nextId('boss'), name, description, isDefeated: false, whyItMatters };
+function makeBoss(
+  name: string,
+  description: string,
+  whyItMatters?: string,
+  pacing: 'quick' | 'sustained' = 'sustained'
+): BossBattle {
+  return { id: nextId('boss'), name, description, isDefeated: false, whyItMatters, pacing };
 }
 
 interface PhaseTemplate {
@@ -341,7 +352,11 @@ interface PhaseTemplate {
   essence: string;
   questTitle: string;
   missionTitles: [string, string];
-  boss: { name: string; description: string };
+  /** Concrete "how do I actually do this" guidance, parallel to
+   * missionTitles by index. Optional so archetype word-weaving (below)
+   * can supply its own dynamic versions instead. */
+  missionHowTos?: [string, string];
+  boss: { name: string; description: string; pacing: 'quick' | 'sustained' };
 }
 
 /** Hand-templated per curated path family (Phase 3, unchanged by this pass).
@@ -356,21 +371,33 @@ const CURATED_CHAPTER_TEMPLATES: Record<string, PhaseTemplate[]> = {
       essence: 'Learning the actual craft well enough that people will pay for it.',
       questTitle: 'Build a portfolio worth showing',
       missionTitles: ['Edit 10 minutes of practice footage', 'Cut a 60-second reel from raw clips'],
-      boss: { name: 'The Blank Timeline', description: 'The fear of starting when nothing exists yet.' },
+      missionHowTos: [
+        'Pick any raw clip you already have (even phone footage) and just start cutting — the goal is reps, not a masterpiece. A timer helps: 10 minutes of footage edited, done, move on.',
+        'Take your best moments from that practice footage and assemble them into one continuous 60-second clip. That single file is the actual portfolio piece.',
+      ],
+      boss: { name: 'The Blank Timeline', description: 'The fear of starting when nothing exists yet.', pacing: 'quick' },
     },
     {
       name: 'The Craftsman',
       essence: 'Building the actual skill, one honest rep at a time.',
       questTitle: 'Land your first paying client',
       missionTitles: ['Send three cold outreach messages', "Write tomorrow's shot list"],
-      boss: { name: 'First Paying Client', description: 'The jump from practicing to being trusted with real work.' },
+      missionHowTos: [
+        'Find 3 people or small businesses who post raw video (weddings, real estate, local restaurants) and message them directly: "I edit video — I\'d love to cut a free sample from footage you already have, no strings attached." A reply or a "yes" counts as sent+verifiable, not a booked job.',
+        'Look at tomorrow\'s actual shoot or edit session and write down, in order, the shots or sequences you plan to get through. A shot list is done when you could hand it to someone else and they\'d know what to do.',
+      ],
+      boss: { name: 'First Paying Client', description: 'The jump from practicing to being trusted with real work.', pacing: 'sustained' },
     },
     {
       name: 'The Independent',
       essence: 'Making your own work stand entirely on its own merit.',
       questTitle: 'Finish your own project',
       missionTitles: ['Shoot the opening scene', 'Lock the first act edit'],
-      boss: { name: 'Imposter Syndrome at the Finish Line', description: 'Believing the finished work is actually good enough to share.' },
+      missionHowTos: [
+        'Shoot the opening scene exactly as scripted or planned, even with imperfect gear or a skeleton crew — "shot" means usable footage exists, not that it\'s perfect.',
+        'Cut the first act together and stop revising it — "locked" means you commit to it and move forward instead of endlessly re-editing the same three minutes.',
+      ],
+      boss: { name: 'Imposter Syndrome at the Finish Line', description: 'Believing the finished work is actually good enough to share.', pacing: 'sustained' },
     },
   ],
   builder: [
@@ -379,21 +406,33 @@ const CURATED_CHAPTER_TEMPLATES: Record<string, PhaseTemplate[]> = {
       essence: 'Turning a raw idea into something that actually exists.',
       questTitle: 'Validate the idea with real people',
       missionTitles: ['Talk to 3 potential customers', 'Write down the core problem in one sentence'],
-      boss: { name: 'The Blank Page', description: 'The fear that keeps an idea from ever becoming real.' },
+      missionHowTos: [
+        'Message or call 3 people who actually have this problem and ask what they currently do about it — verifiable means you had 3 real conversations, not that they agreed to buy anything.',
+        'After those conversations, write the problem in one plain sentence a stranger would understand — no jargon, no solution baked in, just the pain itself.',
+      ],
+      boss: { name: 'The Blank Page', description: 'The fear that keeps an idea from ever becoming real.', pacing: 'quick' },
     },
     {
       name: 'The Operator',
       essence: 'Doing the unglamorous work that makes a business actually run.',
       questTitle: 'Get your first real customer',
       missionTitles: ['Reach out to 5 leads', 'Fix the biggest complaint from feedback'],
-      boss: { name: 'The Plateau', description: 'The stretch where nothing feels like it is moving.' },
+      missionHowTos: [
+        'Message 5 real people who match your ideal customer — a direct message, email, or in-person ask works. Verifiable means 5 messages actually sent, not 5 replies received; getting a customer is a separate, harder thing that takes time.',
+        'Look back at any feedback you\'ve gotten (even one comment) and pick the single loudest complaint. Fix that one thing before adding anything new.',
+      ],
+      boss: { name: 'The Plateau', description: 'The stretch where nothing feels like it is moving.', pacing: 'sustained' },
     },
     {
       name: 'The Scaler',
       essence: 'Making the business work without you doing everything yourself.',
       questTitle: 'Build something that runs without you',
       missionTitles: ['Document your core process', 'Hand off one task fully'],
-      boss: { name: 'Letting Go of Control', description: 'Trusting the business to work without your hands on every part.' },
+      missionHowTos: [
+        'Write down, step by step, how you actually do your most repeated task — specific enough that someone else could follow it without asking you questions.',
+        'Give one real task to someone else (a contractor, employee, or tool) and don\'t redo it yourself — "fully" means you don\'t quietly fix it behind their back.',
+      ],
+      boss: { name: 'Letting Go of Control', description: 'Trusting the business to work without your hands on every part.', pacing: 'sustained' },
     },
   ],
   documentary: [
@@ -405,9 +444,14 @@ const CURATED_CHAPTER_TEMPLATES: Record<string, PhaseTemplate[]> = {
         'Spend a day filming without a shot list, just observing',
         'Identify the one relationship or moment your story actually turns on',
       ],
+      missionHowTos: [
+        'Bring a camera somewhere with your subject and roll for a full day with no plan — the point is footage of real, unscripted life, not a specific outcome.',
+        'Watch that footage back and name, in one sentence, the one relationship or moment the whole story actually hinges on.',
+      ],
       boss: {
         name: 'The Fear of Intruding',
         description: "The discomfort of pointing a camera at someone else's real life and asking them to trust you with it.",
+        pacing: 'quick',
       },
     },
     {
@@ -418,9 +462,14 @@ const CURATED_CHAPTER_TEMPLATES: Record<string, PhaseTemplate[]> = {
         'Keep filming on a day when nothing seems to be happening',
         "Go back to a subject after they've said no once",
       ],
+      missionHowTos: [
+        'Show up and roll camera even on a quiet, uneventful day — the "boring" footage is often what makes the eventful footage land later.',
+        'Reach back out to the subject who said no, with a smaller, lower-stakes ask than the first time — verifiable means you actually sent the message, not that they said yes.',
+      ],
       boss: {
         name: 'The Access Wall',
         description: 'The moment a subject, location, or institution shuts the door, and the film has to find another way in.',
+        pacing: 'sustained',
       },
     },
     {
@@ -431,9 +480,14 @@ const CURATED_CHAPTER_TEMPLATES: Record<string, PhaseTemplate[]> = {
         'Watch all your footage back and write down what story it actually tells',
         'Cut a rough assembly, even an ugly one',
       ],
+      missionHowTos: [
+        'Sit through every clip you\'ve shot, taking notes, and write a few honest sentences on what story the footage supports — not the one you set out to make.',
+        'Assemble every usable clip in rough story order with no polish — this "ugly" first pass just needs to exist, start to finish.',
+      ],
       boss: {
         name: 'Betraying the Subject',
         description: "The fear of shaping someone's real life into a story that isn't fully fair to them.",
+        pacing: 'sustained',
       },
     },
   ],
@@ -443,9 +497,14 @@ const CURATED_CHAPTER_TEMPLATES: Record<string, PhaseTemplate[]> = {
       essence: 'Turning a scattered idea into an actual script someone could shoot.',
       questTitle: 'Finish a script worth shooting',
       missionTitles: ['Write a one-page treatment for your short', 'Finish the first full draft, even a bad one'],
+      missionHowTos: [
+        'In one page, write who the story is about, what they want, and what stops them — treat this like a pitch, not prose.',
+        'Write the script to the end, no matter how rough — "finished" just means there\'s a page that says FADE OUT, not that it\'s good.',
+      ],
       boss: {
         name: 'The First Draft',
         description: "The fear that finishing something imperfect means admitting it isn't good yet.",
+        pacing: 'quick',
       },
     },
     {
@@ -453,9 +512,14 @@ const CURATED_CHAPTER_TEMPLATES: Record<string, PhaseTemplate[]> = {
       essence: 'Turning words on a page into decisions made with real people and a limited budget.',
       questTitle: 'Get your short actually cast and crewed',
       missionTitles: ['Reach out to five actors or collaborators', 'Lock a shot list for your first shoot day'],
+      missionHowTos: [
+        'Message 5 actors or crew (local theater groups, film school pages, or casting Facebook groups work) with the script or a logline attached — sent counts, a "yes" is a separate, later thing.',
+        'For your first shoot day, list every shot in the order you\'ll get them, with rough setups — a locked list means you could hand it to a crew and they\'d know the plan.',
+      ],
       boss: {
         name: 'The Empty Set',
         description: "Standing on location the morning of the shoot with everything still able to fall apart.",
+        pacing: 'sustained',
       },
     },
     {
@@ -463,9 +527,14 @@ const CURATED_CHAPTER_TEMPLATES: Record<string, PhaseTemplate[]> = {
       essence: "Carrying a film across the actual finish line, past the point where it's more fun to start something new.",
       questTitle: 'Finish the edit and get it in front of real eyes',
       missionTitles: ['Lock picture on the edit', 'Screen the finished film for at least one real audience'],
+      missionHowTos: [
+        'Stop re-cutting and export a final version — "locked" means you\'ve committed, even if you can already see things you\'d change.',
+        'Set up one real screening (a living room, a small venue, a video call) with at least one person who isn\'t already deep in the project — done means it played in front of them, not that they loved it.',
+      ],
       boss: {
         name: 'Letting It Be Seen',
         description: 'The fear of the exact moment strangers get to react to something you made.',
+        pacing: 'sustained',
       },
     },
   ],
@@ -478,9 +547,14 @@ const CURATED_CHAPTER_TEMPLATES: Record<string, PhaseTemplate[]> = {
         "Research 10 festivals that actually fit your film's scale and genre",
         'Finish a submission-ready cut',
       ],
+      missionHowTos: [
+        'Use FilmFreeway or a similar directory and list 10 real festivals matching your film\'s length, genre, and budget tier — a spreadsheet with names and deadlines is verifiable proof.',
+        'Lock color, sound, and titles into one exportable file that meets a typical festival\'s spec sheet — "submission-ready" means you could upload it today.',
+      ],
       boss: {
         name: 'The Submit Button',
         description: 'The fear of putting a finished thing in front of strangers who get to say no.',
+        pacing: 'sustained',
       },
     },
     {
@@ -491,9 +565,14 @@ const CURATED_CHAPTER_TEMPLATES: Record<string, PhaseTemplate[]> = {
         'Submit to your first batch of festivals',
         'Start the next project instead of just waiting on this one',
       ],
+      missionHowTos: [
+        'Actually submit (and pay the fee) to at least 3-5 festivals from your research list — done means submitted, not accepted.',
+        'Write the first page of your next idea, or shoot a single test scene — anything that\'s real forward motion instead of refreshing your inbox.',
+      ],
       boss: {
         name: 'The Form Rejection Email',
         description: "The specific sting of an impersonal 'not this time,' and what it does and doesn't mean.",
+        pacing: 'sustained',
       },
     },
     {
@@ -504,9 +583,14 @@ const CURATED_CHAPTER_TEMPLATES: Record<string, PhaseTemplate[]> = {
         "Prepare a real pitch or reel for the people you'll meet there",
         'Follow up with every real connection made at the festival',
       ],
+      missionHowTos: [
+        'Cut a 60-90 second reel of your best work and write a two-sentence verbal pitch you can say without notes — practice it out loud, not just in your head.',
+        'Within a week of the festival, send a short personal message to everyone whose card you took — a real fact from your conversation makes it verifiable and worth sending.',
+      ],
       boss: {
         name: 'The Room Full of People Who Matter',
         description: 'Actually talking to industry people in person instead of just hoping to be noticed.',
+        pacing: 'sustained',
       },
     },
   ],
@@ -519,9 +603,14 @@ const CURATED_CHAPTER_TEMPLATES: Record<string, PhaseTemplate[]> = {
         "Read one full company's actual financial filings, not just headlines",
         'Paper-trade one real thesis for a month before committing capital',
       ],
+      missionHowTos: [
+        'Pull a company\'s actual 10-K or annual report (free on their investor relations page or sec.gov) and read the whole thing, not a summary — verifiable means you can explain their revenue and risks in your own words after.',
+        'Write down a real thesis, pick an entry/exit rule, and track it with fake money in a spreadsheet or app for a month before any real capital moves.',
+      ],
       boss: {
         name: 'The Urge to Skip Homework',
         description: 'The pull to act on a hot tip instead of doing the unglamorous research first.',
+        pacing: 'sustained',
       },
     },
     {
@@ -532,9 +621,14 @@ const CURATED_CHAPTER_TEMPLATES: Record<string, PhaseTemplate[]> = {
         'Write down your actual thesis before you buy, not after',
         "Set a real position size you can live with if you're wrong",
       ],
+      missionHowTos: [
+        'Before placing any order, write a few sentences on why this specific investment, at this price, makes sense — save it somewhere you can check later against what actually happened.',
+        'Decide the dollar amount you\'d be okay losing entirely, and size the position to that — not to how much upside excites you.',
+      ],
       boss: {
         name: 'The First Real Loss',
         description: 'The moment a real position moves against you and you have to decide whether to stick to the plan.',
+        pacing: 'sustained',
       },
     },
     {
@@ -545,9 +639,14 @@ const CURATED_CHAPTER_TEMPLATES: Record<string, PhaseTemplate[]> = {
         "Review your portfolio against your original thesis, not the day's headlines",
         'Rebalance once, deliberately, instead of constantly',
       ],
+      missionHowTos: [
+        'Pull up the thesis you wrote when you bought and check: is it still true? Ignore the price chart while you do this — you\'re grading the reasoning, not the ticker.',
+        'Make whatever trims or additions your plan calls for, on a schedule you set in advance (monthly/quarterly) — one deliberate pass, not a running series of small tweaks.',
+      ],
       boss: {
         name: 'The Urge to Check Every Day',
         description: 'The compulsion to watch a long-term position like it is a live scoreboard.',
+        pacing: 'sustained',
       },
     },
   ],
@@ -560,9 +659,14 @@ const CURATED_CHAPTER_TEMPLATES: Record<string, PhaseTemplate[]> = {
         'Publish one real piece of work publicly, even to no one',
         'Do it again the following week, on schedule',
       ],
+      missionHowTos: [
+        'Post one real, finished piece to a public platform (not a draft folder) — a live link is your proof, view count doesn\'t matter.',
+        'Pick a day and time and publish the next piece then, whether or not the first one got any response — the schedule itself is the mission.',
+      ],
       boss: {
         name: 'Shouting Into the Void',
         description: 'The specific discouragement of making real work that gets zero visible response.',
+        pacing: 'sustained',
       },
     },
     {
@@ -573,9 +677,14 @@ const CURATED_CHAPTER_TEMPLATES: Record<string, PhaseTemplate[]> = {
         'Respond personally to every real comment or message for a month',
         'Double down on the one piece of work that actually got a real reaction',
       ],
+      missionHowTos: [
+        'Set a habit of checking comments/DMs daily and writing a real, specific reply to each one — a generic "thanks!" doesn\'t build the relationship the way engaging with what they actually said does.',
+        'Look at your existing work\'s engagement and pick whichever piece got the most real reaction (comments, shares, replies) — make a follow-up or a similar piece next.',
+      ],
       boss: {
         name: "The Algorithm's Silence",
         description: "The frustration of doing genuinely good work that the platform simply doesn't show anyone.",
+        pacing: 'sustained',
       },
     },
     {
@@ -586,9 +695,14 @@ const CURATED_CHAPTER_TEMPLATES: Record<string, PhaseTemplate[]> = {
         'Launch one real product, service, or offer to your existing audience',
         'Move at least part of your audience onto something you actually own, like an email list',
       ],
+      missionHowTos: [
+        'Put a real price on something — a small digital product, a service, a membership tier — and announce it publicly with a way to actually pay. Launched means live and purchasable, not that anyone bought yet.',
+        'Set up a free email list or similar owned channel and give your existing audience one clear reason to join it — a signup form with at least a few real subscribers is the verifiable step.',
+      ],
       boss: {
         name: 'The Platform Could Vanish Tomorrow',
         description: "Facing how much of what you've built depends on a platform you don't control.",
+        pacing: 'sustained',
       },
     },
   ],
@@ -601,9 +715,14 @@ const CURATED_CHAPTER_TEMPLATES: Record<string, PhaseTemplate[]> = {
         'Identify the one skill gap most limiting your current impact and close it',
         'Take ownership of one real problem nobody else wanted',
       ],
+      missionHowTos: [
+        'Ask a manager or peer directly what one skill would most raise your ceiling, then spend real focused time (a course, practice, shadowing someone) closing that specific gap.',
+        'Find the task everyone avoids in standup or planning and volunteer for it explicitly, in writing, in front of the team — that\'s what makes it verifiable ownership, not a private intention.',
+      ],
       boss: {
         name: 'The Comfortable Plateau',
         description: 'The pull to stay exactly good enough instead of pushing into what is actually uncomfortable to learn.',
+        pacing: 'sustained',
       },
     },
     {
@@ -614,9 +733,14 @@ const CURATED_CHAPTER_TEMPLATES: Record<string, PhaseTemplate[]> = {
         'Mentor or unblock a teammate on something outside your own job',
         'Ask directly for the scope you actually want, instead of waiting to be noticed',
       ],
+      missionHowTos: [
+        'Offer specific, unprompted help to a teammate stuck on something — pairing for 30 minutes or reviewing their work counts, as long as it\'s outside what your own role requires.',
+        'In a real 1:1 with your manager, say plainly what scope or title you\'re aiming for and why — a scheduled conversation you actually had, not a hint you dropped.',
+      ],
       boss: {
         name: 'The Fear of Asking',
         description: 'The discomfort of stating plainly what you want instead of hoping it is noticed and rewarded on its own.',
+        pacing: 'sustained',
       },
     },
     {
@@ -627,9 +751,14 @@ const CURATED_CHAPTER_TEMPLATES: Record<string, PhaseTemplate[]> = {
         'Make one real recommendation that changes a decision above your current level',
         'Build the case for your next real title, on paper, before asking for it',
       ],
+      missionHowTos: [
+        'Write a short, specific recommendation (with reasoning, not just an opinion) and send it to whoever actually owns that decision — verifiable means sent and read, not necessarily adopted.',
+        'Write out, on paper, the concrete impact and scope you\'ve already delivered that supports the next title — bring that document into the actual conversation when you ask.',
+      ],
       boss: {
         name: 'Owning a Decision That Might Be Wrong',
         description: 'The weight of a real call that could fail publicly, with your name on it.',
+        pacing: 'sustained',
       },
     },
   ],
@@ -677,9 +806,14 @@ function buildArchetypeChapterTemplates(archetypeId: string, intake: IntakeAnswe
         `Define exactly what "done" looks like for your first stretch${experienceClause}`,
         `Take one concrete action today, ${pace}`,
       ],
+      missionHowTos: [
+        `Write one or two plain sentences describing what a finished first stretch of ${actionPhrase} actually looks like — specific enough that you (or someone else) could look at it later and tell whether it happened.`,
+        `Pick one small, real action you can finish today that moves ${actionPhrase} forward, and do it before switching to anything else — a real thing done beats a plan for a bigger one.`,
+      ],
       boss: {
         name: 'The Blank Page',
         description: `${f.bossFlavor} starting on ${actionPhrase} when nothing exists yet${constraintClause}.`,
+        pacing: 'quick',
       },
     },
     {
@@ -690,9 +824,14 @@ function buildArchetypeChapterTemplates(archetypeId: string, intake: IntakeAnswe
         `Do the unglamorous version of the work today${constraintClause}`,
         'Check in on what has actually changed since you started',
       ],
+      missionHowTos: [
+        `Do the least exciting, most repetitive part of ${actionPhrase} today rather than the part that feels new — verifiable means it actually got done, not that it felt inspired.`,
+        `Compare where you are now on ${actionPhrase} against where you started — write down two or three concrete things that are genuinely different, even if progress has felt slow or invisible.`,
+      ],
       boss: {
         name: 'The Plateau',
         description: 'The point where most people quit — not because they failed, but because it got quiet.',
+        pacing: 'sustained',
       },
     },
     {
@@ -700,9 +839,14 @@ function buildArchetypeChapterTemplates(archetypeId: string, intake: IntakeAnswe
       essence: `${titleCase(actionPhrase)} becomes visible again.`,
       questTitle: `Finish what you started with ${actionPhrase}`,
       missionTitles: ['Close the last open loop', `Do the part of ${actionPhrase} you have been putting off`],
+      missionHowTos: [
+        'Find the one thing on your list you keep skipping or half-finishing, and actually close it out today — done means done, not "basically done."',
+        `Do specifically the part of ${actionPhrase} you've been avoiding, rather than more of what's already comfortable — that avoided piece is usually what's actually left.`,
+      ],
       boss: {
         name: 'The Last Doubt',
         description: `The fear that shows up right before ${actionPhrase} is actually real.`,
+        pacing: 'sustained',
       },
     },
   ];
@@ -725,11 +869,16 @@ function buildChaptersForPath(pathId: string, intake: IntakeAnswers): Chapter[] 
       isComplete: false,
       quests: [
         makeQuest(tpl.questTitle, [
-          makeMission(tpl.missionTitles[0], 'craft', 10, relevance),
-          makeMission(tpl.missionTitles[1], attributesByPhase[index], 15, relevance),
+          makeMission(tpl.missionTitles[0], 'craft', 10, relevance, tpl.missionHowTos?.[0]),
+          makeMission(tpl.missionTitles[1], attributesByPhase[index], 15, relevance, tpl.missionHowTos?.[1]),
         ]),
       ],
-      bossBattle: makeBoss(tpl.boss.name, tpl.boss.description, buildBossRelevance(chapterNumber, intake.objective)),
+      bossBattle: makeBoss(
+        tpl.boss.name,
+        tpl.boss.description,
+        buildBossRelevance(chapterNumber, intake.objective),
+        tpl.boss.pacing
+      ),
     };
   });
 }
