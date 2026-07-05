@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Home } from 'lucide-react';
 import { Camp } from './screens/Camp';
 import { Intake } from './screens/Intake';
 import { PathSelection } from './screens/PathSelection';
@@ -81,6 +82,21 @@ function withRecomputedQuestCompletion(chapter: Chapter): Chapter {
   };
 }
 
+/** Boss Battle redesign: for a 'quick' Boss Battle, today's Missions ARE
+ * the fight — there's no separate manual self-report. Defeat is derived
+ * live from mission completion every time a Mission is toggled, in either
+ * direction: check the last box and it becomes Defeated on its own;
+ * uncheck one afterward and it honestly un-defeats, since the thing it
+ * stood for (finishing today's steps) is no longer true. 'sustained'
+ * bosses are untouched here — their isDefeated only ever changes via the
+ * explicit self-report in handleDefeatBoss, never inferred from checkboxes. */
+function withRecomputedQuickBossDefeat(chapter: Chapter): Chapter {
+  if (!chapter.bossBattle || chapter.bossBattle.pacing !== 'quick') return chapter;
+  const allMissionsDone = chapter.quests.every((q) => q.missions.every((m) => m.isComplete));
+  if (chapter.bossBattle.isDefeated === allMissionsDone) return chapter;
+  return { ...chapter, bossBattle: { ...chapter.bossBattle, isDefeated: allMissionsDone } };
+}
+
 function App() {
   // Lazy-init from localStorage (src/lib/persistence.ts) so a refresh no
   // longer loses progress — the Phase 4 roadmap's stated limitation.
@@ -121,7 +137,11 @@ function App() {
   }, [currentCampaign, currentChapterIndex, campaignHistory, avatar]);
 
   const playerState: PlayerCampState = currentCampaign
-    ? { status: 'active-journey', chapter: currentCampaign.chapters[currentChapterIndex] }
+    ? {
+        status: 'active-journey',
+        chapter: currentCampaign.chapters[currentChapterIndex],
+        nextChapter: currentCampaign.chapters[currentChapterIndex + 1],
+      }
     : campaignHistory.length > 0
       ? { status: 'between-campaigns', mostRecentCampaign: campaignHistory[0] }
       : { status: 'new-player' };
@@ -134,7 +154,7 @@ function App() {
     const chapterBefore = currentCampaign.chapters[currentChapterIndex];
     const wasComplete = isChapterFullyComplete(chapterBefore);
 
-    const mutatedChapter = withRecomputedQuestCompletion(mutate(chapterBefore));
+    const mutatedChapter = withRecomputedQuickBossDefeat(withRecomputedQuestCompletion(mutate(chapterBefore)));
     const nowComplete = isChapterFullyComplete(mutatedChapter);
     const justCompleted = !wasComplete && nowComplete;
 
@@ -162,6 +182,9 @@ function App() {
     });
   }
 
+  /** Boss Battle redesign: the honest self-report, only ever wired up in
+   * Camp.tsx for 'sustained' Boss Battles now — 'quick' ones are handled
+   * automatically by withRecomputedQuickBossDefeat above. */
   function handleDefeatBoss() {
     applyChapterUpdate((chapter) =>
       chapter.bossBattle ? { ...chapter, bossBattle: { ...chapter.bossBattle, isDefeated: true } } : chapter
@@ -182,6 +205,28 @@ function App() {
     }
     setCeremonyChapterIndex(null);
     setView('camp');
+  }
+
+  /** "Go Home" from the ceremony: deliberately does NOT advance into the
+   * next Chapter. The just-finished Chapter stays as the active one
+   * (already flagged isComplete by applyChapterUpdate) and the player
+   * lands on the Character overview instead — a real look at progress so
+   * far, not just today's screen. They start the next Chapter later, on
+   * their own initiative, via the "Begin Chapter N" prompt Camp shows for
+   * a chapter that's done but not yet advanced past (see handleAdvanceChapter
+   * below, used from that prompt). Only ever offered for a non-final
+   * Chapter — ChapterCompletion.tsx hides this button when the campaign
+   * itself just finished, so there's always a next Chapter waiting here. */
+  function handleGoHomeFromCeremony() {
+    setCeremonyChapterIndex(null);
+    setView('character');
+  }
+
+  /** Shared by both exits above: the actual advance into the next Chapter.
+   * Continue calls this immediately; Camp's "Begin Chapter N" prompt calls
+   * it later, whenever the player comes back ready after "Go Home." */
+  function handleAdvanceChapter() {
+    setCurrentChapterIndex((idx) => idx + 1);
   }
 
   function handleBeginAdventure() {
@@ -362,8 +407,32 @@ function App() {
     setShowSafetyLog(true);
   }
 
+  // FIX: players had no obvious, universal way back to an overview of
+  // their account/progress. This small header renders on every screen
+  // except the Chapter Completion ceremony (deliberately uninterruptible
+  // — Book I/III's ceremony shouldn't be skippable mid-celebration) and the
+  // brief loading screen (nothing to navigate away from). A single,
+  // unmistakable house icon always means the same thing: take me to the
+  // Character overview — all chapters, real attribute totals, progress so
+  // far — not just "today's screen" (that's Camp, still one tap away via
+  // the bottom Navigation bar's own "Camp" tab).
+  const showHomeHeader = view !== 'chapter-complete' && view !== 'generating';
+
   return (
     <div className="flex h-full flex-col">
+      {showHomeHeader && (
+        <header className="flex items-center border-b border-camp-night-soft bg-camp-night/95 px-4 py-2 backdrop-blur">
+          <button
+            onClick={() => setView('character')}
+            aria-label={`Home (${TERMS.profile})`}
+            title={`Home (${TERMS.profile})`}
+            className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-medium text-camp-parchment-dim transition-all duration-150 hover:text-camp-parchment active:scale-95"
+          >
+            <Home className="h-4 w-4" />
+            <span>Home</span>
+          </button>
+        </header>
+      )}
       <main className="flex-1 overflow-y-auto">
         {view === 'intake' && (
           <Intake onComplete={handleIntakeComplete} onExitToCamp={handleExitToCamp} />
@@ -391,6 +460,7 @@ function App() {
             chapterIndex={ceremonyChapterIndex}
             isCampaignComplete={ceremonyIsCampaignComplete}
             onContinue={handleContinueFromCeremony}
+            onGoHome={handleGoHomeFromCeremony}
           />
         )}
         {view === 'dev-preview-crisis' && (
@@ -450,6 +520,7 @@ function App() {
             onBeginAdventure={handleBeginAdventure}
             onDefeatBoss={handleDefeatBoss}
             onOpenArchive={handleOpenArchive}
+            onAdvanceChapter={handleAdvanceChapter}
           />
         )}
         {view === 'character' && <CharacterSheet campaign={currentCampaign} avatar={avatar} />}
