@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { PlayerCampState, Mission, Campaign } from '../types/campaign';
 import { TERMS } from '../constants/language';
-import { getTodaysMissions } from '../engine/missionsToday';
 
 interface CampProps {
   state: PlayerCampState;
@@ -146,12 +145,56 @@ function ActiveCamp({
   onToggleMission: (missionId: string) => void;
   onDefeatBoss: () => void;
 }) {
-  // UX-FIX: this used to read a stored `chapter.missionsToday` that only
-  // ever got populated for Chapter 1 at generation time — every later
-  // Chapter silently showed an empty Today section forever. Computed live
-  // now, from the real quest data, so it can't go stale again.
-  const todaysMissions = getTodaysMissions(chapter);
+  // BUG FIX: "Today" used to be recomputed live, every render, as "the
+  // first Quest that isn't fully complete yet." That meant the instant a
+  // player checked off the LAST remaining Mission in that Quest, the whole
+  // Today list would immediately swap to the next Quest (or vanish) —
+  // mid-click, with no confirmation. It looked like the task the player
+  // just checked had simply disappeared.
+  //
+  // Fix: pin which Quest "Today" is showing once, when the player arrives
+  // at Camp (component mount), and keep showing that same Quest's Missions
+  // — checked or not — for the rest of this visit. The player can freely
+  // check/uncheck without anything vanishing. Only an explicit "Continue"
+  // click (below) advances to the next Quest, so progressing forward is
+  // always a deliberate action, never a surprise side-effect of a checkbox.
+  const [pinnedQuestId, setPinnedQuestId] = useState<string | null>(
+    () => chapter.quests.find((q) => !q.missions.every((m) => m.isComplete))?.id ?? null
+  );
+
+  const pinnedQuest = chapter.quests.find((q) => q.id === pinnedQuestId);
+  const todaysMissions = pinnedQuest?.missions ?? [];
+  const pinnedQuestComplete = todaysMissions.length > 0 && todaysMissions.every((m) => m.isComplete);
+  const nextIncompleteQuest = chapter.quests.find(
+    (q) => q.id !== pinnedQuestId && !q.missions.every((m) => m.isComplete)
+  );
+
   const allMissionsComplete = chapter.quests.every((q) => q.missions.every((m) => m.isComplete));
+
+  // Boss Battle redesign: "quick" bosses are genuinely finished the moment
+  // today's steps are — for those, Defeat can reasonably wait on the
+  // checklist. "sustained" bosses (the default, and most of them) can't be
+  // forced into a day, so Defeat is always available as an honest
+  // self-report, completely independent of the checklist below.
+  const pacing = chapter.bossBattle?.pacing ?? 'sustained';
+
+  // Boss Battle redesign: Today's Steps stay hidden behind "Face It" until
+  // the player deliberately engages with the Challenge — revealing the
+  // checklist is a separate, lower-stakes action from the "Defeat" self
+  // report below. Per-visit state, same pattern as pinnedQuestId above:
+  // resets each time the player arrives at Camp, so returning always leads
+  // with the Challenge itself rather than a wall of checkboxes.
+  const [challengeRevealed, setChallengeRevealed] = useState(false);
+  const stepsVisible = !chapter.bossBattle || challengeRevealed;
+
+  // The concrete, nameable real-world outcome this Chapter's Boss Battle
+  // stands for. Every template in campaignGenerationEngine.ts pairs exactly
+  // one Quest with one Boss Battle per Chapter, and the Quest title is
+  // always phrased as a plain real-world action (e.g. "Get your first real
+  // customer") — unlike the Boss's own name/description, which is
+  // deliberately an abstract feeling ("The Plateau"). Surfacing the Quest
+  // title next to the Boss card is what actually answers "face what?"
+  const realWorldGoal = chapter.quests[0]?.title;
 
   return (
     <div className="mx-auto flex min-h-full max-w-xl flex-col gap-8 px-6 py-10">
@@ -167,37 +210,18 @@ function ActiveCamp({
         <p className="mt-2 text-camp-parchment-dim">{chapter.essence}</p>
       </section>
 
-      {/* 2. Today's Missions — clear, few, never a wall of tasks */}
-      <section className="flex flex-col gap-3">
-        <h2 className="font-display text-lg text-camp-parchment">Today</h2>
-        {todaysMissions.length > 0 ? (
-          <>
-            {todaysMissions.map((mission) => (
-              <MissionRow key={mission.id} mission={mission} onToggle={onToggleMission} />
-            ))}
-            {/* Missions within the same Quest currently share one relevance
-                line (see campaignGenerationEngine.ts) — shown once here
-                rather than repeated under every row, so it reads as context
-                instead of the same sentence three times in a row. */}
-            {todaysMissions[0]?.whyItMatters && (
-              <p className="text-xs italic text-camp-parchment-dim">
-                Why this matters: {todaysMissions[0].whyItMatters}
-              </p>
-            )}
-          </>
-        ) : (
-          <p className="rounded-xl border border-camp-night-soft bg-camp-night-soft/40 px-4 py-3 text-sm text-camp-parchment-dim">
-            {chapter.bossBattle && !chapter.bossBattle.isDefeated
-              ? "Nothing left to check off — the Boss Battle below is what's left."
-              : "Nothing left to check off today."}
-          </p>
-        )}
-      </section>
-
-      {/* Boss Battle (Book II Ch.4) — the chapter's defining obstacle */}
+      {/* RESTRUCTURE: Boss Battle now leads, framed as this Chapter's one
+          headline challenge — with Today's Missions underneath as the
+          concrete steps toward it, rather than the reverse. This matches
+          how the mechanics already work (finishing Missions is what
+          unlocks the fight) — the old layout buried the actual point of
+          the Chapter below a checklist, which is backwards.
+          Book II Ch.4 — the chapter's defining obstacle. */}
       {chapter.bossBattle && (
         <section>
-          <h2 className="font-display text-lg text-camp-parchment">Boss Battle</h2>
+          <p className="font-display text-sm uppercase tracking-[0.2em] text-camp-danger">
+            This Chapter's Challenge
+          </p>
           <div
             className={`mt-2 rounded-xl border p-4 ${
               chapter.bossBattle.isDefeated
@@ -205,11 +229,20 @@ function ActiveCamp({
                 : 'border-camp-danger/40 bg-camp-night-soft/60'
             }`}
           >
-            <p className="font-display text-lg text-camp-parchment">
-              {chapter.bossBattle.name}
-            </p>
-            <p className="mt-1 text-sm text-camp-parchment-dim">
-              {chapter.bossBattle.description}
+            {/* CLARITY FIX, direct answer to "face what???" — the title
+                itself now names the concrete real-world thing to do, not
+                just an abstract feeling. The Boss's in-world name and
+                description drop down to flavor text underneath, so the
+                fantasy voice (Book I Ch.9) is kept, but never leads.
+                Boss Battle redesign: no more "Face It:" prefix here — that
+                duplicated the button below. Plain goal until it's actually
+                beaten; "Defeated:" only appears once it's true. */}
+            <h2 className="font-display text-2xl text-camp-parchment">
+              {chapter.bossBattle.isDefeated && 'Defeated: '}
+              {realWorldGoal ?? chapter.bossBattle.name}
+            </h2>
+            <p className="mt-1 text-sm italic text-camp-parchment-dim">
+              {chapter.bossBattle.name} — {chapter.bossBattle.description}
             </p>
             {chapter.bossBattle.whyItMatters && (
               <p className="mt-2 text-xs italic text-camp-parchment-dim">
@@ -219,32 +252,127 @@ function ActiveCamp({
             {chapter.bossBattle.isDefeated ? (
               <p className="mt-3 text-sm font-medium text-camp-ember">Defeated</p>
             ) : (
-              <>
-                {/* UX-FIX: this button used to be clickable at any time, even
-                    with today's Missions untouched — a real player could
-                    "defeat" a Boss Battle without having done any of the
-                    work it's supposed to represent. Now gated on today's
-                    Missions actually being complete first. */}
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                {/* Boss Battle redesign: "Face It" now means exactly one
+                    thing — reveal today's steps. It never marks anything
+                    defeated, so it can't be confused with the self-report
+                    button next to it. Hidden once steps are already
+                    showing, since it's done its one job. */}
+                {!stepsVisible && (
+                  <button
+                    onClick={() => setChallengeRevealed(true)}
+                    className="rounded-full border border-camp-parchment-dim/50 px-5 py-2 text-sm font-semibold text-camp-parchment transition-all duration-150 hover:border-camp-parchment-dim active:scale-95"
+                  >
+                    Face It
+                  </button>
+                )}
+                {/* Boss Battle redesign: "Defeat" is the one place an honest
+                    self-report happens. For "sustained" bosses (the
+                    default) it's always clickable — the real-world outcome
+                    isn't inferred from checkboxes, ever. For "quick" bosses,
+                    today's steps essentially ARE the win, so it stays
+                    gated on them being done, same as the old behavior. */}
                 <button
                   onClick={onDefeatBoss}
-                  disabled={!allMissionsComplete}
+                  disabled={pacing === 'quick' && !allMissionsComplete}
                   title={
-                    allMissionsComplete
-                      ? undefined
-                      : "Finish today's Missions first"
+                    pacing === 'quick' && !allMissionsComplete
+                      ? "Finish today's steps first"
+                      : undefined
                   }
-                  className="mt-3 rounded-full bg-camp-ember px-5 py-2 text-sm font-semibold text-camp-night transition-all duration-150 hover:bg-camp-ember-bright active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-camp-ember"
+                  className="rounded-full bg-camp-ember px-5 py-2 text-sm font-semibold text-camp-night transition-all duration-150 hover:bg-camp-ember-bright active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-camp-ember"
                 >
-                  Face It
+                  Defeat
                 </button>
-                {!allMissionsComplete && (
-                  <p className="mt-2 text-xs text-camp-parchment-dim">
-                    Finish today's Missions first.
-                  </p>
-                )}
-              </>
+                <p className="w-full text-xs text-camp-parchment-dim">
+                  {pacing === 'quick'
+                    ? allMissionsComplete
+                      ? "Today's steps are done — if the real thing above has actually happened, mark it here."
+                      : "Finish today's steps to unlock this — for this Challenge, doing the reps essentially is the win."
+                    : "This isn't tied to today's steps below. Click it only once the real thing above has actually happened — whether that's today or weeks from now."}
+                </p>
+              </div>
             )}
           </div>
+        </section>
+      )}
+
+      {/* 2. Today's steps toward that challenge — clear, few, never a wall
+          of tasks. Framed explicitly as sub-steps of the Challenge above,
+          not a separate independent list. Boss Battle redesign: hidden
+          entirely until the player clicks "Face It" above (when there is a
+          Boss Battle) — the Challenge leads, the checklist is revealed on
+          demand rather than dumped up front. */}
+      {stepsVisible && (
+        <section className="flex flex-col gap-3">
+          <div>
+            <h2 className="font-display text-lg text-camp-parchment">
+              {chapter.bossBattle ? "Today's Steps" : 'Today'}
+            </h2>
+            {/* CLARITY FIX: the Quest title (the concrete real-world thing
+                these Missions serve) was never actually shown anywhere on
+                Camp — players saw checkboxes with nothing tying them to a
+                real goal. This line is that missing connective tissue. */}
+            {pinnedQuest?.title && (
+              <p className="text-sm text-camp-parchment-dim">Quest: {pinnedQuest.title}</p>
+            )}
+          </div>
+          {todaysMissions.length > 0 ? (
+            <>
+              {todaysMissions.map((mission) => (
+                <MissionRow key={mission.id} mission={mission} onToggle={onToggleMission} />
+              ))}
+              {/* Missions within the same Quest currently share one relevance
+                  line (see campaignGenerationEngine.ts) — shown once here
+                  rather than repeated under every row, so it reads as context
+                  instead of the same sentence three times in a row. */}
+              {todaysMissions[0]?.whyItMatters && (
+                <p className="text-xs italic text-camp-parchment-dim">
+                  Why this matters: {todaysMissions[0].whyItMatters}
+                </p>
+              )}
+              {/* All of this pinned Quest's Missions are checked. Rather than
+                  silently swapping to the next Quest (the old bug), show it
+                  plainly and let the player decide when to move on. */}
+              {pinnedQuestComplete && (
+                <div className="mt-1 rounded-xl border border-attr-confidence/40 bg-camp-night-soft/40 px-4 py-3">
+                  <p className="text-sm font-medium text-camp-ember">Quest complete.</p>
+                  {nextIncompleteQuest ? (
+                    <>
+                      <p className="mt-1 text-sm text-camp-parchment-dim">
+                        Ready to move on to "{nextIncompleteQuest.title}"?
+                      </p>
+                      <button
+                        onClick={() => setPinnedQuestId(nextIncompleteQuest.id)}
+                        className="mt-3 rounded-full bg-camp-ember px-5 py-2 text-sm font-semibold text-camp-night transition-all duration-150 hover:bg-camp-ember-bright active:scale-95"
+                      >
+                        Continue
+                      </button>
+                    </>
+                  ) : (
+                    <p className="mt-1 text-sm text-camp-parchment-dim">
+                      {chapter.bossBattle && !chapter.bossBattle.isDefeated
+                        ? pacing === 'sustained'
+                          ? // Boss Battle redesign: this is the "no dead end"
+                            // case the handoff calls out — steps are done but
+                            // the real outcome hasn't happened yet, and for a
+                            // sustained boss that's completely normal, not a
+                            // stuck state. Calm, no manufactured urgency.
+                            `Nice work today. Still working toward "${realWorldGoal ?? chapter.bossBattle.name}"? Come back for more.`
+                          : 'The Challenge above is what\'s left this Chapter.'
+                        : 'Nothing left to check off today.'}
+                    </p>
+                  )}
+                </div>
+              )}
+            </>
+          ) : (
+            <p className="rounded-xl border border-camp-night-soft bg-camp-night-soft/40 px-4 py-3 text-sm text-camp-parchment-dim">
+              {chapter.bossBattle && !chapter.bossBattle.isDefeated
+                ? "Nothing left to check off — the Challenge above is what's left."
+                : "Nothing left to check off today."}
+            </p>
+          )}
         </section>
       )}
     </div>
@@ -275,30 +403,55 @@ function MissionRow({
     wasComplete.current = mission.isComplete;
   }, [mission.isComplete]);
 
+  // Per-task hint (Boss Battle redesign): a "?" affordance that reveals
+  // concrete, actionable guidance without touching completion state. Kept
+  // as a fully separate button/click target from the toggle below — a
+  // player checking the hint should never accidentally mark the task done.
+  const [showHint, setShowHint] = useState(false);
+
   return (
-    <button
-      onClick={() => onToggle(mission.id)}
-      className="flex items-center gap-3 rounded-xl border border-camp-night-soft bg-camp-night-soft/60 px-4 py-3 text-left transition-all duration-150 hover:border-camp-ember/50 active:scale-[0.98]"
-    >
-      <span
-        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-xs ${
-          mission.isComplete
-            ? 'border-camp-ember bg-camp-ember text-camp-night'
-            : 'border-camp-parchment-dim'
-        } ${justCompleted ? 'animate-mission-pop' : ''}`}
-      >
-        {mission.isComplete ? '✓' : ''}
-      </span>
-      <span
-        className={
-          mission.isComplete
-            ? 'text-camp-parchment-dim line-through transition-colors duration-150'
-            : 'text-camp-parchment transition-colors duration-150'
-        }
-      >
-        {mission.title}
-      </span>
-    </button>
+    <div className="overflow-hidden rounded-xl border border-camp-night-soft bg-camp-night-soft/60 transition-all duration-150 hover:border-camp-ember/50">
+      <div className="flex items-center gap-2 px-2 py-1">
+        <button
+          onClick={() => onToggle(mission.id)}
+          className="flex flex-1 items-center gap-3 rounded-lg px-2 py-2 text-left active:scale-[0.98]"
+        >
+          <span
+            className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-xs ${
+              mission.isComplete
+                ? 'border-camp-ember bg-camp-ember text-camp-night'
+                : 'border-camp-parchment-dim'
+            } ${justCompleted ? 'animate-mission-pop' : ''}`}
+          >
+            {mission.isComplete ? '✓' : ''}
+          </span>
+          <span
+            className={
+              mission.isComplete
+                ? 'text-camp-parchment-dim line-through transition-colors duration-150'
+                : 'text-camp-parchment transition-colors duration-150'
+            }
+          >
+            {mission.title}
+          </span>
+        </button>
+        {mission.howTo && (
+          <button
+            onClick={() => setShowHint((v) => !v)}
+            aria-label={showHint ? 'Hide how-to' : 'How do I do this?'}
+            aria-expanded={showHint}
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-camp-parchment-dim/40 text-xs text-camp-parchment-dim transition-colors duration-150 hover:border-camp-parchment-dim hover:text-camp-parchment"
+          >
+            ?
+          </button>
+        )}
+      </div>
+      {showHint && mission.howTo && (
+        <p className="border-t border-camp-night-soft/80 bg-camp-night-soft/40 px-4 py-3 text-xs text-camp-parchment-dim">
+          {mission.howTo}
+        </p>
+      )}
+    </div>
   );
 }
 
