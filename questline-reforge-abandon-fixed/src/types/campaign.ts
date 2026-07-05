@@ -33,6 +33,11 @@ export interface Mission {
    * had no way to see why a given checkbox mattered beyond "do this task."
    * See engine/campaignGenerationEngine.ts's relevance helpers. */
   whyItMatters?: string;
+  /** UX-fix pass (Boss Battle redesign): concrete, actionable "how do I
+   * actually do this" guidance — a sample message, where to find leads,
+   * what "verifiable" looks like, etc. Shown on demand via a separate
+   * affordance in MissionRow, never by toggling completion. */
+  howTo?: string;
 }
 
 export interface Quest {
@@ -51,6 +56,14 @@ export interface BossBattle {
   isDefeated: boolean;
   /** Same UX-fix rationale as Mission.whyItMatters above. */
   whyItMatters?: string;
+  /** Boss Battle redesign: internal behavior flag, never shown to the
+   * player as a label. 'quick' = genuinely doable in one sitting — today's
+   * Missions essentially ARE the fight, so Defeat can reasonably wait on
+   * them being done. 'sustained' = a real-world outcome that isn't fully
+   * in the player's control and may take days/weeks — Defeat is always an
+   * honest self-report, independent of any checkbox. Missing/undefined is
+   * treated as 'sustained', the more conservative/honest default. */
+  pacing?: 'quick' | 'sustained';
 }
 
 /** Book II, Ch.4 — ongoing, lower-intensity recurring obstacles, acknowledged
