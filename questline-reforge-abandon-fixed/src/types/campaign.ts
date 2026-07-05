@@ -138,5 +138,14 @@ export interface Campaign {
  */
 export type PlayerCampState =
   | { status: 'new-player' }
-  | { status: 'active-journey'; chapter: Chapter }
+  | {
+      status: 'active-journey';
+      chapter: Chapter;
+      /** Boss Battle redesign: only present when `chapter` is already
+       * fully complete but the player chose "Go Home" instead of
+       * "Continue" from the ceremony — Camp uses this to offer a
+       * "Begin Chapter N" prompt instead of pretending there's still
+       * work left on a chapter that's actually done. */
+      nextChapter?: Chapter;
+    }
   | { status: 'between-campaigns'; mostRecentCampaign: Campaign };
