@@ -22,6 +22,13 @@ interface ChapterCompletionProps {
   chapterIndex: number;
   isCampaignComplete: boolean;
   onContinue: () => void;
+  /** Boss Battle redesign: the ceremony used to be the one screen with no
+   * way out except "Continue" straight into the next Chapter. This gives
+   * players a second, genuinely different path: land on the Character
+   * overview first — a real look at progress so far — and start the next
+   * Chapter later, on their own initiative, whenever they're ready.
+   * Unlike onContinue, this does NOT advance into the next Chapter. */
+  onGoHome: () => void;
 }
 
 const ATTRIBUTE_ICONS: Record<AttributeKey, typeof Target> = {
@@ -45,6 +52,7 @@ export function ChapterCompletion({
   chapterIndex,
   isCampaignComplete,
   onContinue,
+  onGoHome,
 }: ChapterCompletionProps) {
   const chapter = campaign.chapters[chapterIndex];
   const nextChapter = campaign.chapters[chapterIndex + 1];
@@ -118,17 +126,32 @@ export function ChapterCompletion({
         </p>
       )}
 
-      <button
-        onClick={onContinue}
-        className="animate-ceremony-rise mt-2 rounded-full bg-camp-ember px-8 py-3 font-semibold text-camp-night transition-transform duration-150 hover:bg-camp-ember-bright active:scale-95"
+      <div
+        className="animate-ceremony-rise mt-2 flex flex-col items-center gap-3 sm:flex-row"
         style={{ animationDelay: '0.55s' }}
       >
-        {isCampaignComplete
-          ? 'Return to Camp'
-          : nextChapter
-            ? `Begin Chapter ${nextChapter.chapterNumber}: ${nextChapter.name}`
-            : 'Return to Camp'}
-      </button>
+        <button
+          onClick={onContinue}
+          className="rounded-full bg-camp-ember px-8 py-3 font-semibold text-camp-night transition-transform duration-150 hover:bg-camp-ember-bright active:scale-95"
+        >
+          {isCampaignComplete
+            ? 'Return to Camp'
+            : nextChapter
+              ? `Begin Chapter ${nextChapter.chapterNumber}: ${nextChapter.name}`
+              : 'Return to Camp'}
+        </button>
+        {/* Boss Battle redesign: genuinely different from Continue now —
+            this does NOT advance to the next Chapter. It's "look at where
+            I stand first," not "jump straight into the next fight." */}
+        {!isCampaignComplete && nextChapter && (
+          <button
+            onClick={onGoHome}
+            className="rounded-full border border-camp-parchment-dim/40 px-8 py-3 font-semibold text-camp-parchment transition-transform duration-150 hover:border-camp-parchment-dim active:scale-95"
+          >
+            Go Home
+          </button>
+        )}
+      </div>
     </div>
   );
 }
